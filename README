@@ -1,3 +1,12 @@
+DISCLAIMER
+----------
+THIS REPOSITORY IS FORK OF https://github.com/MichaelDipperstein/lzss WITH
+LZSSL COMPRESSION ALGORITHM SUPPORT!
+
+SEE NOTICE.md FOR MORE DETAILS.
+
+modified by cam900 (https://github.com/cam900, https://gitlab.com/cam900)
+
 DESCRIPTION
 -----------
 This archive contains a simple and readable ANSI C library implementing LZSS
@@ -15,7 +24,6 @@ https://michaeldipperstein.github.io/lzss.html
 
 FILES
 -----
-COPYING         - Rules for copying and distributing LGPL software
 brute.c         - File implementing brute force search for strings matching the
                   strings to be encoded.
 COPYING         - Rules for copying and distributing GPL software
@@ -30,18 +38,18 @@ list.c          - File implementing linked list indexed search for strings
 lzlocal.h       - Header file defining interface to be used by files
                   implementing searches for strings matching strings to be
                   encoded.
-lzdecode.c      - LZSS decoding source
-lzencode.c      - LZSS encoding source
+lzss.c          - LZSS encoding/decoding source
 lzss.h          - LZSS encoding/decoding header files
-lzvars.c        - Variables used by both lzencode and lzdecode
 Makefile        - makefile for this project (assumes gcc compiler and GNU make)
+NOTICE.md       - DISCLAIMER FOR THIS FORK
 README          - this file
 sample.c        - Sample program demonstrating usage of encode and decode
                   routines.
 tree.c          - File implementing a sorted binary tree to index and search
                   for strings matching the strings to be encoded.
 optlist/        - Subtree containing optlist command line option parser library
-bitfile/        - Subtree containing bitfile bitwise file library
+bitfile/        - Subtree containing bitfile bitwise file library*
+* Removed because not necessary for LZSSL compression
 
 BUILDING
 --------

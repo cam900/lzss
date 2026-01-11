@@ -30,6 +30,13 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *
 ***************************************************************************/
+
+/***************************************************************************
+* THIS REPOSITORY IS FORK OF https://github.com/MichaelDipperstein/lzss
+* WITH SUPPORT LZSSL FORMAT!
+* modified by cam900 (https://github.com/cam900, https://gitlab.com/cam900)
+***************************************************************************/
+
 #ifndef _LZSS_LOCAL_H
 #define _LZSS_LOCAL_H
 
@@ -42,7 +49,8 @@
 *                                CONSTANTS
 ***************************************************************************/
 
-#define OFFSET_BITS     12
+#define LITERAL_BITS    7
+#define OFFSET_BITS     11
 #define LENGTH_BITS     4
 
 #if (((1 << (OFFSET_BITS + LENGTH_BITS)) - 1) > UINT_MAX)
@@ -50,6 +58,7 @@
 #endif
 
 /* We want a sliding window*/
+#define LITERAL_SIZE    (1 << LITERAL_BITS)
 #define WINDOW_SIZE     (1 << OFFSET_BITS)
 
 /* maximum match length not encoded and maximum length encoded (4 bits) */
@@ -58,6 +67,8 @@
 
 #define ENCODED     0       /* encoded string */
 #define UNCODED     1       /* unencoded character */
+
+#define WINDOW_DEFAULT 0x00 /* default fill value for window */
 
 /***************************************************************************
 *                            TYPE DEFINITIONS

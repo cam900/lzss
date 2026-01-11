@@ -31,13 +31,18 @@
 ***************************************************************************/
 
 /***************************************************************************
+* THIS REPOSITORY IS FORK OF https://github.com/MichaelDipperstein/lzss
+* WITH SUPPORT LZSSL FORMAT!
+* modified by cam900 (https://github.com/cam900, https://gitlab.com/cam900)
+***************************************************************************/
+
+/***************************************************************************
 *                             INCLUDED FILES
 ***************************************************************************/
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include "lzlocal.h"
-#include "bitfile/bitfile.h"
 
 /***************************************************************************
 *                            TYPE DEFINITIONS
@@ -52,6 +57,7 @@
 ***************************************************************************/
 /* cyclic buffer sliding window of already read characters */
 static buffers_t buffers;
+static unsigned char literalWindow[LITERAL_SIZE];
 
 /***************************************************************************
 *                               PROTOTYPES
@@ -77,14 +83,13 @@ static buffers_t buffers;
 ****************************************************************************/
 int EncodeLZSS(FILE *fpIn, FILE *fpOut)
 {
-    bit_file_t *bfpOut;
     encoded_string_t matchData;
     int c;
-    unsigned int i;
+    unsigned int i, j;
     unsigned int len;                       /* length of string */
 
     /* head of sliding window and lookahead */
-    unsigned int windowHead, uncodedHead;
+    unsigned int windowHead, uncodedHead, literalLen;
 
     /* validate arguments */
     if ((NULL == fpIn) || (NULL == fpOut))
@@ -93,24 +98,16 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
         return -1;
     }
 
-    /* convert output file to bitfile */
-    bfpOut = MakeBitFile(fpOut, BF_WRITE);
-
-    if (NULL == bfpOut)
-    {
-        perror("Making Output File a BitFile");
-        return -1;
-    }
-
     windowHead = 0;
     uncodedHead = 0;
+    literalLen = 0;
 
     /************************************************************************
     * Fill the sliding window buffer with some known vales.  DecodeLZSS must
     * use the same values.  If common characters are used, there's an
     * increased chance of matching to the earlier strings.
     ************************************************************************/
-    memset(buffers.slidingWindow, ' ', WINDOW_SIZE * sizeof(unsigned char));
+    memset(buffers.slidingWindow, WINDOW_DEFAULT, WINDOW_SIZE * sizeof(unsigned char));
 
     /************************************************************************
     * Copy MAX_CODED bytes from the input file into the uncoded lookahead
@@ -149,8 +146,22 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
         if (matchData.length <= MAX_UNCODED)
         {
             /* not long enough match.  write uncoded flag and character */
-            BitFilePutBit(UNCODED, bfpOut);
-            BitFilePutChar(buffers.uncodedLookahead[uncodedHead], bfpOut);
+            literalWindow[literalLen++] = buffers.uncodedLookahead[uncodedHead];
+            /* Prevent window overflow */
+            if (literalLen >= 0x80)
+            {
+                unsigned int adjustedLiteralLen;
+
+                adjustedLiteralLen = literalLen - 1;
+
+                /* write literal copy command */
+                putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
+                for (j = 0; j < literalLen; j++)
+                {
+                    putc(literalWindow[j], fpOut);
+                }
+                literalLen = 0;
+            }
 
             matchData.length = 1;   /* set to 1 for 1 byte uncoded */
         }
@@ -158,15 +169,30 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
         {
             unsigned int adjustedLen;
 
+            /* flush literals */
+            if (literalLen > 0)
+            {
+                unsigned int adjustedLiteralLen;
+
+                adjustedLiteralLen = literalLen - 1;
+
+                /* write literal copy command */
+                putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
+                for (j = 0; j < literalLen; j++)
+                {
+                    putc(literalWindow[j], fpOut);
+                }
+                literalLen = 0;
+            }
+
             /* adjust the length of the match so minimum encoded len is 0 */
             adjustedLen = matchData.length - (MAX_UNCODED + 1);
 
             /* match length > MAX_UNCODED.  Encode as offset and length. */
-            BitFilePutBit(ENCODED, bfpOut);
-            BitFilePutBitsNum(bfpOut, &matchData.offset, OFFSET_BITS,
-                sizeof(unsigned int));
-            BitFilePutBitsNum(bfpOut, &adjustedLen, LENGTH_BITS,
-                sizeof(unsigned int));
+            putc((ENCODED << 7) |
+                (adjustedLen << 3) |
+                ((matchData.offset >> 8) & 7), fpOut);
+            putc(matchData.offset & 0xff, fpOut);
         }
 
         /********************************************************************
@@ -199,8 +225,21 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
         }
     }
 
-    /* we've encoded everything, free bitfile structure */
-    BitFileToFILE(bfpOut);
+    /* write remains literal command */
+    if (literalLen > 0)
+    {
+        unsigned int adjustedLiteralLen;
+
+        adjustedLiteralLen = literalLen - 1;
+
+        /* write literal copy command */
+        putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
+        for (j = 0; j < literalLen; j++)
+        {
+            putc(literalWindow[j], fpOut);
+        }
+        literalLen = 0;
+    }
 
    return 0;
 }
@@ -220,7 +259,6 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
 ****************************************************************************/
 int DecodeLZSS(FILE *fpIn, FILE *fpOut)
 {
-    bit_file_t *bfpIn;
     int c;
     unsigned int nextChar;
 
@@ -231,66 +269,64 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
         return -1;
     }
 
-    /* convert input file to bitfile */
-    bfpIn = MakeBitFile(fpIn, BF_READ);
-
-    if (NULL == bfpIn)
-    {
-        perror("Making Input File a BitFile");
-        return -1;
-    }
-
     /************************************************************************
     * Fill the sliding window buffer with some known vales.  EncodeLZSS must
     * use the same values.  If common characters are used, there's an
     * increased chance of matching to the earlier strings.
     ************************************************************************/
-    memset(buffers.slidingWindow, ' ', WINDOW_SIZE * sizeof(unsigned char));
+    memset(buffers.slidingWindow, WINDOW_DEFAULT, WINDOW_SIZE * sizeof(unsigned char));
 
     nextChar = 0;
 
     while (1)
     {
         /* read uncoded/encoded bit */
-        if ((c = BitFileGetBit(bfpIn)) == EOF)
+        if ((c = getc(fpIn)) == EOF)
         {
             /* we hit the EOF */
             break;
         }
 
-        if (c == UNCODED)
+        if (c & 0x80) // UNCODED
         {
-            /* uncoded character */
-            if ((c = BitFileGetChar(bfpIn)) == EOF)
+            unsigned int i, len;
+
+            len = c & 0x7f;
+
+            for (i = 0; i <= len; i++)
+            {
+                /* uncoded character */
+                if ((c = getc(fpIn)) == EOF)
+                {
+                    break;
+                }
+
+                /* write out byte and put it in sliding window */
+                putc(c, fpOut);
+                buffers.slidingWindow[nextChar] = c;
+                CyclicInc(nextChar, WINDOW_SIZE);
+            }
+            if (c == EOF)
             {
                 break;
             }
-
-            /* write out byte and put it in sliding window */
-            putc(c, fpOut);
-            buffers.slidingWindow[nextChar] = c;
-            CyclicInc(nextChar, WINDOW_SIZE);
         }
-        else
+        else // ENCODED
         {
             unsigned int i;
+            int l;
 
             /* encoded offset and length */
             encoded_string_t code;
             code.offset = 0;
             code.length = 0;
 
-            if ((BitFileGetBitsNum(bfpIn, &code.offset, OFFSET_BITS,
-                sizeof(unsigned int))) == EOF)
+            if ((l = getc(fpIn)) == EOF)
             {
                 break;
             }
-
-            if ((BitFileGetBitsNum(bfpIn, &code.length, LENGTH_BITS,
-                sizeof(unsigned int))) == EOF)
-            {
-                break;
-            }
+            code.length = (c >> 3) & 0xf;
+            code.offset = ((c & 7) << 8) | (l & 0xff);
 
             code.length += MAX_UNCODED + 1;
 
@@ -317,9 +353,6 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
             nextChar = Wrap((nextChar + code.length), WINDOW_SIZE);
         }
     }
-
-    /* we've decoded everything, free bitfile structure */
-    BitFileToFILE(bfpIn);
 
     return 0;
 }

@@ -1,13 +1,20 @@
 ############################################################################
 # Makefile for lzss encode/decode library and sample program
 ############################################################################
+
+############################################################################
+# THIS REPOSITORY IS FORK OF https://github.com/MichaelDipperstein/lzss
+# WITH SUPPORT LZSSL FORMAT!
+# modified by cam900 (https://github.com/cam900, https://gitlab.com/cam900)
+############################################################################
+
 CC = gcc
 LD = gcc
 CFLAGS = -I. -O3 -Wall -Wextra -pedantic -ansi -c
 LDFLAGS = -O3 -o
 
 # libraries
-LIBS = -L. -Lbitfile -Loptlist -llzss -lbitfile -loptlist
+LIBS = -L. -Loptlist -llzss -loptlist
 
 # Treat NT and non-NT windows the same
 ifeq ($(OS),Windows_NT)
@@ -47,7 +54,7 @@ LZOBJS = $(FMOBJ) lzss.o
 
 all:		sample$(EXE)
 
-sample$(EXE):	sample.o liblzss.a optlist/liboptlist.a bitfile/libbitfile.a
+sample$(EXE):	sample.o liblzss.a optlist/liboptlist.a
 		$(LD) $< $(LIBS) $(LDFLAGS) $@
 
 sample.o:	sample.c lzss.h optlist/optlist.h
@@ -57,7 +64,7 @@ liblzss.a:	$(LZOBJS)
 		ar crv liblzss.a $(LZOBJS)
 		ranlib liblzss.a
 
-lzss.o:	lzss.c lzlocal.h bitfile/bitfile.h
+lzss.o:	lzss.c lzlocal.h
 		$(CC) $(CFLAGS) $<
 
 brute.o:	brute.c lzlocal.h
@@ -75,9 +82,6 @@ kmp.o:		kmp.c lzlocal.h
 tree.o:		tree.c lzlocal.h
 		$(CC) $(CFLAGS) $<
 
-bitfile/libbitfile.a:
-		cd bitfile && $(MAKE) libbitfile.a
-
 optlist/liboptlist.a:
 		cd optlist && $(MAKE) liboptlist.a
 
@@ -86,4 +90,3 @@ clean:
 		$(DEL) *.a
 		$(DEL) sample$(EXE)
 		cd optlist && $(MAKE) clean
-		cd bitfile && $(MAKE) clean
