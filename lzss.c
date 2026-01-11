@@ -52,6 +52,32 @@
 *                                CONSTANTS
 ***************************************************************************/
 
+#if IS_EXTENDED
+    #define WRITE_LITERAL_FLAG \
+        if (adjustedLiteralLen >= LITERAL_SIZE_SHORT) \
+        { \
+            putc((UNCODED << 7) | 0x40 | ((adjustedLiteralLen >> 8) & 0x3f), fpOut); \
+            putc(adjustedLiteralLen & 0xff, fpOut); \
+        } \
+        else \
+        { \
+            putc((UNCODED << 7) | (adjustedLiteralLen & 0x3f), fpOut); \
+        }
+#else
+    #define WRITE_LITERAL_FLAG putc((UNCODED << 7) | (adjustedLiteralLen & 0x7f), fpOut);
+#endif
+
+#define FLUSH_LITERALS \
+    unsigned int adjustedLiteralLen; \
+    adjustedLiteralLen = literalLen - 1; \
+    /* write literal copy command */ \
+    WRITE_LITERAL_FLAG \
+    for (j = 0; j < literalLen; j++) \
+    { \
+        putc(literalWindow[j], fpOut); \
+    } \
+    literalLen = 0;
+
 /***************************************************************************
 *                            GLOBAL VARIABLES
 ***************************************************************************/
@@ -148,19 +174,9 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
             /* not long enough match.  write uncoded flag and character */
             literalWindow[literalLen++] = buffers.uncodedLookahead[uncodedHead];
             /* Prevent window overflow */
-            if (literalLen >= 0x80)
+            if (literalLen >= LITERAL_SIZE)
             {
-                unsigned int adjustedLiteralLen;
-
-                adjustedLiteralLen = literalLen - 1;
-
-                /* write literal copy command */
-                putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
-                for (j = 0; j < literalLen; j++)
-                {
-                    putc(literalWindow[j], fpOut);
-                }
-                literalLen = 0;
+                FLUSH_LITERALS
             }
 
             matchData.length = 1;   /* set to 1 for 1 byte uncoded */
@@ -172,27 +188,35 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
             /* flush literals */
             if (literalLen > 0)
             {
-                unsigned int adjustedLiteralLen;
-
-                adjustedLiteralLen = literalLen - 1;
-
-                /* write literal copy command */
-                putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
-                for (j = 0; j < literalLen; j++)
-                {
-                    putc(literalWindow[j], fpOut);
-                }
-                literalLen = 0;
+                FLUSH_LITERALS
             }
 
             /* adjust the length of the match so minimum encoded len is 0 */
             adjustedLen = matchData.length - (MAX_UNCODED + 1);
 
             /* match length > MAX_UNCODED.  Encode as offset and length. */
+#if IS_EXTENDED
+            if (matchData.offset >= WINDOW_SIZE_SHORT)
+            {
+                putc((ENCODED << 7) |
+                    (adjustedLen << 3) | 0x04 |
+                    ((matchData.offset >> 16) & 3), fpOut);
+                putc((matchData.offset >> 8) & 0xff, fpOut);
+                putc(matchData.offset & 0xff, fpOut);
+            }
+            else
+            {
+                putc((ENCODED << 7) |
+                    (adjustedLen << 3) |
+                    ((matchData.offset >> 8) & 3), fpOut);
+                putc(matchData.offset & 0xff, fpOut);
+            }
+#else
             putc((ENCODED << 7) |
                 (adjustedLen << 3) |
                 ((matchData.offset >> 8) & 7), fpOut);
             putc(matchData.offset & 0xff, fpOut);
+#endif
         }
 
         /********************************************************************
@@ -228,17 +252,7 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
     /* write remains literal command */
     if (literalLen > 0)
     {
-        unsigned int adjustedLiteralLen;
-
-        adjustedLiteralLen = literalLen - 1;
-
-        /* write literal copy command */
-        putc((UNCODED << 7) | adjustedLiteralLen, fpOut);
-        for (j = 0; j < literalLen; j++)
-        {
-            putc(literalWindow[j], fpOut);
-        }
-        literalLen = 0;
+        FLUSH_LITERALS
     }
 
    return 0;
@@ -287,11 +301,30 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
             break;
         }
 
-        if (c & 0x80) // UNCODED
+        if (c & 0x80) /* UNCODED */
         {
             unsigned int i, len;
 
+#if IS_EXTENDED
+            int l;
+
+            if (c & 0x40)
+            {
+                /* extra count bits */
+                if ((l = getc(fpIn)) == EOF)
+                {
+                    break;
+                }
+
+                len = ((c & 0x3f) << 8) | (l & 0xff);
+            }
+            else
+            {
+                len = c & 0x3f;
+            }
+#else
             len = c & 0x7f;
+#endif
 
             for (i = 0; i <= len; i++)
             {
@@ -311,7 +344,7 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
                 break;
             }
         }
-        else // ENCODED
+        else /* ENCODED */
         {
             unsigned int i;
             int l;
@@ -321,12 +354,40 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
             code.offset = 0;
             code.length = 0;
 
+#if IS_EXTENDED
+            if (c & 0x04)
+            {
+                int h;
+
+                /* extra copy bits */
+                if ((l = getc(fpIn)) == EOF)
+                {
+                    break;
+                }
+                if ((h = getc(fpIn)) == EOF)
+                {
+                    break;
+                }
+                code.length = (c >> 3) & 0xf;
+                code.offset = ((c & 3) << 16) | ((h & 0xff) << 8) | (l & 0xff);
+            }
+            else
+            {
+                if ((l = getc(fpIn)) == EOF)
+                {
+                    break;
+                }
+                code.length = (c >> 3) & 0xf;
+                code.offset = ((c & 3) << 8) | (l & 0xff);
+            }
+#else
             if ((l = getc(fpIn)) == EOF)
             {
                 break;
             }
             code.length = (c >> 3) & 0xf;
             code.offset = ((c & 7) << 8) | (l & 0xff);
+#endif
 
             code.length += MAX_UNCODED + 1;
 

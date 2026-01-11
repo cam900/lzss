@@ -49,8 +49,18 @@
 *                                CONSTANTS
 ***************************************************************************/
 
-#define LITERAL_BITS    7
-#define OFFSET_BITS     11
+#define IS_EXTENDED     1 /* LZSSL (0) or LZSSLE (1) variation select */
+#if IS_EXTENDED
+    #define LITERAL_BITS       14
+    #define LITERAL_BITS_SHORT 6
+    #define OFFSET_BITS        18
+    #define OFFSET_BITS_SHORT  10
+#else
+    #define LITERAL_BITS       7
+    #define LITERAL_BITS_SHORT 6
+    #define OFFSET_BITS        11
+    #define OFFSET_BITS_SHORT  10
+#endif
 #define LENGTH_BITS     4
 
 #if (((1 << (OFFSET_BITS + LENGTH_BITS)) - 1) > UINT_MAX)
@@ -58,8 +68,10 @@
 #endif
 
 /* We want a sliding window*/
-#define LITERAL_SIZE    (1 << LITERAL_BITS)
-#define WINDOW_SIZE     (1 << OFFSET_BITS)
+#define LITERAL_SIZE       (1 << LITERAL_BITS)
+#define LITERAL_SIZE_SHORT (1 << LITERAL_BITS_SHORT)
+#define WINDOW_SIZE        (1 << OFFSET_BITS)
+#define WINDOW_SIZE_SHORT  (1 << OFFSET_BITS_SHORT)
 
 /* maximum match length not encoded and maximum length encoded (4 bits) */
 #define MAX_UNCODED     2
