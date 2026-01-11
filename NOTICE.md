@@ -14,8 +14,8 @@ LZSS variant with Literal copy command, Byte aligned for make unnecessary to bit
 First byte:
 Bit 7 Literal (Set) / Copy (Clear)
 - if Bit 7 is set:
-  - Bit 6-0: Literal count - 1
-  - Following bytes: Literal datas
+  - Bit 6-0: Literal count
+  - Following bytes: Literal datas, repeated to Literal count + 1
 - if Bit 7 is clear:
   - Bit 6-3: Copy length
   - Bit 2-0: Copy offset MSB
@@ -34,11 +34,11 @@ Bit 7 Literal (Set) / Copy (Clear)
 - if Bit 7 is set:
   - Bit 6: Extended literal count (Set) / Short literal count (Clear)
   - if Bit 6 is clear:
-    - Bit 5-0: Literal count - 1
+    - Bit 5-0: Literal count
   - if Bit 6 is set:
     - Bit 5-0: Literal count MSB
     - Next byte: Literal count LSB
-  - Following bytes: Literal datas
+  - Following bytes: Literal datas, repeated to Literal count + 1
 - if Bit 7 is clear:
   - Bit 6-3: Copy length
   - Bit 2: Extended copy offset (Set) / Short copy offset (Clear)
